@@ -47,6 +47,10 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     implementation("com.kakao.maps.open:android:2.11.9")
     implementation("com.kakao.sdk:v2-all:2.20.1")
+    implementation("com.google.android.gms:play-services-location:21.1.0")
+    implementation(platform("com.squareup.okhttp3:okhttp-bom:4.9.1"))
+    implementation("com.squareup.okhttp3:okhttp")
+    implementation("com.squareup.okhttp3:logging-interceptor")
 
 }
 
