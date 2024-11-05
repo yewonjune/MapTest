@@ -43,6 +43,7 @@ class MainActivity : AppCompatActivity() {
     private var isMapInitialized = false
     private val CHANNEL_ID = "mart_notification_channel"
     private val NOTIFICATION_ID = 1
+    private val NEARBY_DISTANCE_THRESHOLD = 50; //사용자의 위치에서 50m 이내에 마트가 있을 경우
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -165,10 +166,12 @@ class MainActivity : AppCompatActivity() {
             fusedLocationClient.lastLocation
                 .addOnSuccessListener { location: Location? ->
                     location?.let {
-                        val userLatLng = LatLng.from(it.latitude, it.longitude)
+                        val userLatitude = it.latitude
+                        val userLongitude = it.longitude
+                        val userLatLng = LatLng.from(userLatitude, userLongitude)
                         kakaoMap.moveCamera(CameraUpdateFactory.newCenterPosition(userLatLng))
                         Log.d("KakaoMap", "searchNearbyMarts 호출 전 위치 가져옴")
-                        searchNearbyMarts(it.latitude, it.longitude)
+                        searchNearbyMarts(userLatitude, userLongitude)
                     }
                 }
                 .addOnFailureListener {
@@ -179,9 +182,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun searchNearbyMarts(latitude: Double, longitude: Double) {
+    private fun searchNearbyMarts(userLatitude: Double, userLongitude: Double) {
         val client = OkHttpClient()
-        val url = "https://dapi.kakao.com/v2/local/search/keyword.json?query=마트&x=$longitude&y=$latitude&radius=2000"
+        val url = "https://dapi.kakao.com/v2/local/search/keyword.json?query=마트&x=$userLongitude&y=$userLatitude&radius=2000"
         Log.d("KakaoMap", "마트 검색 URL: $url")
         val request = Request.Builder()
             .url(url)
@@ -203,21 +206,31 @@ class MainActivity : AppCompatActivity() {
                     val json = JSONObject(responseBody.string())
                     val documents = json.getJSONArray("documents")
 
-                    if (documents.length() > 0) {
-                        // 2km 내에 마트가 발견된 경우 알림을 보냄
-                        sendMartNotification()
-                    }
-
                     for (i in 0 until documents.length()) {
                         val mart = documents.getJSONObject(i)
                         val name = mart.getString("place_name")
-                        val lat = mart.getString("y").toDouble()
-                        val lng = mart.getString("x").toDouble()
+                        val martLatitude = mart.getString("y").toDouble()
+                        val martLongitude = mart.getString("x").toDouble()
 
-                        Log.d("KakaoMap", "마트 이름: $name, 위치: ($lat, $lng)")
+                        Log.d("KakaoMap", "마트 이름: $name, 위치: ($martLatitude, $martLongitude)")
+
+                        val martLocation = Location("").apply {
+                            latitude = martLatitude
+                            longitude = martLongitude
+                        }
+
+                        val userLocation = Location("").apply {
+                            latitude = userLatitude
+                            longitude = userLongitude
+                        }
+
+                        if (userLocation.distanceTo(martLocation) <= NEARBY_DISTANCE_THRESHOLD) {
+                            sendMartNotification()
+                            break
+                        }
 
                         runOnUiThread {
-                            addMartLabel(LatLng.from(lat, lng)) //를 호출하여 지도에 마트 위치 표시
+                            addMartLabel(LatLng.from(martLatitude, martLongitude))
                         }
                     }
                 }?: Log.e("KakaoMap", "응답 데이터가 비어 있습니다.")
@@ -237,7 +250,7 @@ class MainActivity : AppCompatActivity() {
     private fun createNotificationChannel() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             val name = "Mart Notification"
-            val descriptionText = "마트가 2km 안에 있습니다."
+            val descriptionText = "마트가 50m 이내에 있습니다."
             val importance = NotificationManager.IMPORTANCE_DEFAULT
             val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
                 description = descriptionText
@@ -252,8 +265,8 @@ class MainActivity : AppCompatActivity() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
             val builder = NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.mmarker) // 아이콘없어서 임시로 아무거나 적용
-                .setContentTitle("마트 발견")
-                .setContentText("근처에 마트가 있습니다!")
+                .setContentTitle("마트 입장")
+                .setContentText("마트에 입장하였습니다!")
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)
 
             with(NotificationManagerCompat.from(this)) {
